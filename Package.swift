@@ -24,9 +24,6 @@ let package = Package(
                 .landscapeRight,
                 .landscapeLeft,
                 .portraitUpsideDown
-            ],
-            capabilities: [
-                .camera(purposeString: "バーコードをスキャンするためにカメラを使用します")
             ]
         )
     ],
