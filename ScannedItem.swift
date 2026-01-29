@@ -1,6 +1,6 @@
 import Foundation
 
-struct Product: Identifiable, Hashable {
+struct ScannedItem: Identifiable, Hashable {
     let id = UUID()
     let barcode: String
     let name: String

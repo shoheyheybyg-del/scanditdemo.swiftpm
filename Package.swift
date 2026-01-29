@@ -15,8 +15,6 @@ let package = Package(
             bundleIdentifier: "com.example.scanditdemo",
             displayVersion: "1.0",
             bundleVersion: "1",
-            appIcon: .placeholder(icon: .camera),
-            accentColor: .presetColor(.blue),
             supportedDeviceFamilies: [
                 .pad,
                 .phone

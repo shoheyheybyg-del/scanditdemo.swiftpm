@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var scannedResults: [Product] = []
+    @State private var scannedResults: [ScannedItem] = []
     @State private var showScanner = false
     @State private var scannedCode: String?
 
@@ -25,14 +25,14 @@ struct ContentView: View {
                     .frame(maxHeight: .infinity)
                 } else {
                     List {
-                        ForEach(scannedResults) { product in
+                        ForEach(scannedResults) { item in
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(product.name)
+                                Text(item.name)
                                     .font(.headline)
-                                Text("バーコード: \(product.barcode)")
+                                Text("バーコード: \(item.barcode)")
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
-                                Text(product.scannedAt, style: .time)
+                                Text(item.scannedAt, style: .time)
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -71,8 +71,8 @@ struct ContentView: View {
             }
             .onChange(of: scannedCode) { newValue in
                 if let code = newValue {
-                    let product = Product(barcode: code)
-                    scannedResults.append(product)
+                    let item = ScannedItem(barcode: code)
+                    scannedResults.append(item)
                     scannedCode = nil
                 }
             }
