@@ -9,11 +9,20 @@ struct ContentView: View {
         NavigationView {
             VStack {
                 if scannedResults.isEmpty {
-                    ContentUnavailableView(
-                        "スキャン結果なし",
-                        systemImage: "barcode.viewfinder",
-                        description: Text("下のボタンをタップしてバーコードをスキャンしてください")
-                    )
+                    VStack(spacing: 16) {
+                        Image(systemName: "barcode.viewfinder")
+                            .font(.system(size: 60))
+                            .foregroundColor(.secondary)
+                        Text("スキャン結果なし")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                        Text("下のボタンをタップしてバーコードをスキャンしてください")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding()
+                    .frame(maxHeight: .infinity)
                 } else {
                     List {
                         ForEach(scannedResults) { product in
@@ -60,7 +69,7 @@ struct ContentView: View {
                     }
                 }
             }
-            .onChange(of: scannedCode) { oldValue, newValue in
+            .onChange(of: scannedCode) { newValue in
                 if let code = newValue {
                     let product = Product(barcode: code)
                     scannedResults.append(product)
@@ -74,8 +83,4 @@ struct ContentView: View {
     private func deleteItems(at offsets: IndexSet) {
         scannedResults.remove(atOffsets: offsets)
     }
-}
-
-#Preview {
-    ContentView()
 }

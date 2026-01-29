@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 5.8
 
 import PackageDescription
 import AppleProductTypes
@@ -13,10 +13,9 @@ let package = Package(
             name: "scanditdemo",
             targets: ["AppModule"],
             bundleIdentifier: "com.example.scanditdemo",
-            teamIdentifier: "",
             displayVersion: "1.0",
             bundleVersion: "1",
-            appIcon: .placeholder(icon: .barcode),
+            appIcon: .placeholder(icon: .camera),
             accentColor: .presetColor(.blue),
             supportedDeviceFamilies: [
                 .pad,
@@ -36,7 +35,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "AppModule",
-            path: "Sources"
+            path: "."
         )
     ]
 )
