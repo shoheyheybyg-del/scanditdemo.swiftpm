@@ -1,19 +1,28 @@
 import SwiftUI
 import AVFoundation
+import Vision
+
+struct ScanResult {
+    let barcode: String
+    let recognizedTexts: [String]
+}
 
 struct ScannerView: View {
     let scanMode: ScanMode
-    @Binding var scannedCodes: [String]
+    let textRecognitionEnabled: Bool
+    @Binding var scannedResults: [ScanResult]
     @Binding var isPresented: Bool
 
     @State private var lastScannedCode: String?
     @State private var scanCount: Int = 0
+    @State private var isProcessingText = false
 
     var body: some View {
         ZStack {
             ScannerRepresentable(
                 scanMode: scanMode,
-                onCodeScanned: handleScannedCode
+                textRecognitionEnabled: textRecognitionEnabled,
+                onScanCompleted: handleScanResult
             )
 
             VStack {
@@ -23,6 +32,11 @@ struct ScannerView: View {
                         Text(scanMode.rawValue + "スキャン")
                             .font(.headline)
                             .foregroundColor(.white)
+                        if textRecognitionEnabled {
+                            Text("テキスト認識: ON")
+                                .font(.caption)
+                                .foregroundColor(.green)
+                        }
                         if scanMode == .multiple {
                             Text("スキャン数: \(scanCount)")
                                 .font(.subheadline)
@@ -42,6 +56,19 @@ struct ScannerView: View {
                 .background(Color.black.opacity(0.5))
 
                 Spacer()
+
+                // Processing indicator
+                if isProcessingText {
+                    HStack {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        Text("テキスト認識中...")
+                            .foregroundColor(.white)
+                    }
+                    .padding(12)
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(8)
+                }
 
                 // Last scanned code display (for multiple mode)
                 if scanMode == .multiple, let lastCode = lastScannedCode {
@@ -73,14 +100,14 @@ struct ScannerView: View {
         }
     }
 
-    private func handleScannedCode(_ code: String) {
+    private func handleScanResult(_ result: ScanResult) {
         // Avoid duplicate consecutive scans
-        if code == lastScannedCode && scanMode == .multiple {
+        if result.barcode == lastScannedCode && scanMode == .multiple {
             return
         }
 
-        lastScannedCode = code
-        scannedCodes.append(code)
+        lastScannedCode = result.barcode
+        scannedResults.append(result)
         scanCount += 1
 
         if scanMode == .single {
@@ -91,50 +118,58 @@ struct ScannerView: View {
 
 struct ScannerRepresentable: UIViewControllerRepresentable {
     let scanMode: ScanMode
-    let onCodeScanned: (String) -> Void
+    let textRecognitionEnabled: Bool
+    let onScanCompleted: (ScanResult) -> Void
 
     func makeUIViewController(context: Context) -> ScannerViewController {
         let controller = ScannerViewController()
         controller.delegate = context.coordinator
         controller.scanMode = scanMode
+        controller.textRecognitionEnabled = textRecognitionEnabled
         return controller
     }
 
     func updateUIViewController(_ uiViewController: ScannerViewController, context: Context) {}
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onCodeScanned: onCodeScanned)
+        Coordinator(onScanCompleted: onScanCompleted)
     }
 
     class Coordinator: NSObject, ScannerViewControllerDelegate {
-        let onCodeScanned: (String) -> Void
+        let onScanCompleted: (ScanResult) -> Void
 
-        init(onCodeScanned: @escaping (String) -> Void) {
-            self.onCodeScanned = onCodeScanned
+        init(onScanCompleted: @escaping (ScanResult) -> Void) {
+            self.onScanCompleted = onScanCompleted
         }
 
-        func didFindCode(_ code: String) {
-            onCodeScanned(code)
+        func didCompleteScan(_ result: ScanResult) {
+            onScanCompleted(result)
         }
     }
 }
 
 protocol ScannerViewControllerDelegate: AnyObject {
-    func didFindCode(_ code: String)
+    func didCompleteScan(_ result: ScanResult)
 }
 
-class ScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
+class ScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDelegate, AVCaptureVideoDataOutputSampleBufferDelegate {
     weak var delegate: ScannerViewControllerDelegate?
     var scanMode: ScanMode = .single
+    var textRecognitionEnabled: Bool = false
 
     private var captureSession: AVCaptureSession?
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var lastScannedCode: String?
     private var lastScanTime: Date?
+    private var isProcessingBarcode = false
+    private var pendingBarcode: String?
+    private var recognizedTexts: [String] = []
+    private var textRecognitionRequest: VNRecognizeTextRequest?
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
+        setupTextRecognition()
         setupCamera()
     }
 
@@ -146,6 +181,27 @@ class ScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDel
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         stopScanning()
+    }
+
+    private func setupTextRecognition() {
+        textRecognitionRequest = VNRecognizeTextRequest { [weak self] request, error in
+            guard let observations = request.results as? [VNRecognizedTextObservation] else { return }
+
+            var texts: [String] = []
+            for observation in observations {
+                if let topCandidate = observation.topCandidates(1).first {
+                    texts.append(topCandidate.string)
+                }
+            }
+
+            DispatchQueue.main.async {
+                self?.recognizedTexts = texts
+                self?.completeBarcodeScan()
+            }
+        }
+        textRecognitionRequest?.recognitionLevel = .accurate
+        textRecognitionRequest?.recognitionLanguages = ["ja-JP", "en-US"]
+        textRecognitionRequest?.usesLanguageCorrection = true
     }
 
     private func setupCamera() {
@@ -172,11 +228,10 @@ class ScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDel
             return
         }
 
+        // Barcode metadata output
         let metadataOutput = AVCaptureMetadataOutput()
-
         if session.canAddOutput(metadataOutput) {
             session.addOutput(metadataOutput)
-
             metadataOutput.setMetadataObjectsDelegate(self, queue: DispatchQueue.main)
             metadataOutput.metadataObjectTypes = [
                 .ean8,
@@ -193,6 +248,15 @@ class ScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDel
         } else {
             showNoCameraAlert()
             return
+        }
+
+        // Video data output for text recognition
+        if textRecognitionEnabled {
+            let videoOutput = AVCaptureVideoDataOutput()
+            videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "videoQueue"))
+            if session.canAddOutput(videoOutput) {
+                session.addOutput(videoOutput)
+            }
         }
 
         let previewLayer = AVCaptureVideoPreviewLayer(session: session)
@@ -252,7 +316,44 @@ class ScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDel
             lastScanTime = now
         }
 
+        // Prevent processing while already handling a barcode
+        guard !isProcessingBarcode else { return }
+
         AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
-        delegate?.didFindCode(stringValue)
+
+        if textRecognitionEnabled {
+            // Store barcode and wait for text recognition
+            isProcessingBarcode = true
+            pendingBarcode = stringValue
+            // Text recognition will happen in captureOutput and call completeBarcodeScan
+        } else {
+            // No text recognition, complete immediately
+            let result = ScanResult(barcode: stringValue, recognizedTexts: [])
+            delegate?.didCompleteScan(result)
+        }
+    }
+
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard textRecognitionEnabled,
+              isProcessingBarcode,
+              let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer),
+              let request = textRecognitionRequest else {
+            return
+        }
+
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
+        try? handler.perform([request])
+    }
+
+    private func completeBarcodeScan() {
+        guard let barcode = pendingBarcode else { return }
+
+        let result = ScanResult(barcode: barcode, recognizedTexts: recognizedTexts)
+        delegate?.didCompleteScan(result)
+
+        // Reset state
+        pendingBarcode = nil
+        recognizedTexts = []
+        isProcessingBarcode = false
     }
 }

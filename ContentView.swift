@@ -3,27 +3,44 @@ import SwiftUI
 struct ContentView: View {
     @State private var scannedResults: [ScannedItem] = []
     @State private var showScanner = false
-    @State private var scannedCodes: [String] = []
+    @State private var scanResults: [ScanResult] = []
     @State private var selectedMode: ScanMode = .single
+    @State private var textRecognitionEnabled = false
 
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                // Mode selector
-                VStack(spacing: 8) {
+                // Settings section
+                VStack(spacing: 12) {
+                    // Mode selector
                     Picker("スキャンモード", selection: $selectedMode) {
                         ForEach(ScanMode.allCases, id: \.self) { mode in
                             Text(mode.rawValue).tag(mode)
                         }
                     }
                     .pickerStyle(.segmented)
-                    .padding(.horizontal)
 
                     Text(selectedMode.description)
                         .font(.caption)
                         .foregroundColor(.secondary)
+
+                    // Text recognition toggle
+                    Toggle(isOn: $textRecognitionEnabled) {
+                        HStack {
+                            Image(systemName: "text.viewfinder")
+                                .foregroundColor(.orange)
+                            VStack(alignment: .leading) {
+                                Text("テキスト認識")
+                                    .font(.subheadline)
+                                Text("賞味期限などを読み取り")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .toggleStyle(SwitchToggleStyle(tint: .orange))
                 }
-                .padding(.vertical, 12)
+                .padding()
                 .background(Color(UIColor.systemGroupedBackground))
 
                 // Results list
@@ -45,14 +62,49 @@ struct ContentView: View {
                 } else {
                     List {
                         ForEach(scannedResults) { item in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(item.name)
-                                    .font(.headline)
-                                Text("バーコード: \(item.barcode)")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
+                            VStack(alignment: .leading, spacing: 8) {
+                                // Barcode info
+                                HStack {
+                                    Image(systemName: "barcode")
+                                        .foregroundColor(.blue)
+                                    Text(item.barcode)
+                                        .font(.headline)
+                                        .fontDesign(.monospaced)
+                                }
+
+                                // Expiration date if found
+                                if let expDate = item.expirationDate {
+                                    HStack {
+                                        Image(systemName: "calendar")
+                                            .foregroundColor(.orange)
+                                        Text(expDate)
+                                            .font(.subheadline)
+                                            .foregroundColor(.orange)
+                                    }
+                                }
+
+                                // Other recognized texts
+                                if !item.recognizedTexts.isEmpty {
+                                    DisclosureGroup {
+                                        ForEach(item.recognizedTexts, id: \.self) { text in
+                                            Text(text)
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
+                                    } label: {
+                                        HStack {
+                                            Image(systemName: "text.alignleft")
+                                                .foregroundColor(.gray)
+                                            Text("認識テキスト (\(item.recognizedTexts.count)件)")
+                                                .font(.caption)
+                                                .foregroundColor(.gray)
+                                        }
+                                    }
+                                }
+
+                                // Scan time
                                 Text(item.scannedAt, style: .time)
-                                    .font(.caption)
+                                    .font(.caption2)
                                     .foregroundColor(.secondary)
                             }
                             .padding(.vertical, 4)
@@ -63,12 +115,20 @@ struct ContentView: View {
 
                 // Scan button
                 Button(action: {
-                    scannedCodes = []
+                    scanResults = []
                     showScanner = true
                 }) {
                     HStack {
                         Image(systemName: selectedMode.iconName)
                         Text(selectedMode == .single ? "スキャン" : "複数スキャン開始")
+                        if textRecognitionEnabled {
+                            Text("+ OCR")
+                                .font(.caption)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.orange.opacity(0.3))
+                                .cornerRadius(4)
+                        }
                     }
                     .font(.headline)
                     .foregroundColor(.white)
@@ -80,10 +140,11 @@ struct ContentView: View {
                 .padding()
             }
             .navigationTitle("Scandit Demo")
-            .sheet(isPresented: $showScanner, onDismiss: processScannedCodes) {
+            .sheet(isPresented: $showScanner, onDismiss: processScanResults) {
                 ScannerView(
                     scanMode: selectedMode,
-                    scannedCodes: $scannedCodes,
+                    textRecognitionEnabled: textRecognitionEnabled,
+                    scannedResults: $scanResults,
                     isPresented: $showScanner
                 )
                 .ignoresSafeArea()
@@ -101,12 +162,15 @@ struct ContentView: View {
         .navigationViewStyle(.stack)
     }
 
-    private func processScannedCodes() {
-        for code in scannedCodes {
-            let item = ScannedItem(barcode: code)
+    private func processScanResults() {
+        for result in scanResults {
+            let item = ScannedItem(
+                barcode: result.barcode,
+                recognizedTexts: result.recognizedTexts
+            )
             scannedResults.append(item)
         }
-        scannedCodes = []
+        scanResults = []
     }
 
     private func deleteItems(at offsets: IndexSet) {
