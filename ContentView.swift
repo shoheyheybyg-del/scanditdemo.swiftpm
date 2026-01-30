@@ -3,11 +3,30 @@ import SwiftUI
 struct ContentView: View {
     @State private var scannedResults: [ScannedItem] = []
     @State private var showScanner = false
-    @State private var scannedCode: String?
+    @State private var scannedCodes: [String] = []
+    @State private var selectedMode: ScanMode = .single
 
     var body: some View {
         NavigationView {
-            VStack {
+            VStack(spacing: 0) {
+                // Mode selector
+                VStack(spacing: 8) {
+                    Picker("スキャンモード", selection: $selectedMode) {
+                        ForEach(ScanMode.allCases, id: \.self) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+
+                    Text(selectedMode.description)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 12)
+                .background(Color(UIColor.systemGroupedBackground))
+
+                // Results list
                 if scannedResults.isEmpty {
                     VStack(spacing: 16) {
                         Image(systemName: "barcode.viewfinder")
@@ -42,23 +61,32 @@ struct ContentView: View {
                     }
                 }
 
+                // Scan button
                 Button(action: {
+                    scannedCodes = []
                     showScanner = true
                 }) {
-                    Label("スキャン", systemImage: "barcode.viewfinder")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .cornerRadius(12)
+                    HStack {
+                        Image(systemName: selectedMode.iconName)
+                        Text(selectedMode == .single ? "スキャン" : "複数スキャン開始")
+                    }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(selectedMode == .single ? Color.blue : Color.green)
+                    .cornerRadius(12)
                 }
                 .padding()
             }
             .navigationTitle("Scandit Demo")
-            .sheet(isPresented: $showScanner) {
-                ScannerView(scannedCode: $scannedCode, isPresented: $showScanner)
-                    .ignoresSafeArea()
+            .sheet(isPresented: $showScanner, onDismiss: processScannedCodes) {
+                ScannerView(
+                    scanMode: selectedMode,
+                    scannedCodes: $scannedCodes,
+                    isPresented: $showScanner
+                )
+                .ignoresSafeArea()
             }
             .toolbar {
                 if !scannedResults.isEmpty {
@@ -69,15 +97,16 @@ struct ContentView: View {
                     }
                 }
             }
-            .onChange(of: scannedCode) { newValue in
-                if let code = newValue {
-                    let item = ScannedItem(barcode: code)
-                    scannedResults.append(item)
-                    scannedCode = nil
-                }
-            }
         }
         .navigationViewStyle(.stack)
+    }
+
+    private func processScannedCodes() {
+        for code in scannedCodes {
+            let item = ScannedItem(barcode: code)
+            scannedResults.append(item)
+        }
+        scannedCodes = []
     }
 
     private func deleteItems(at offsets: IndexSet) {
