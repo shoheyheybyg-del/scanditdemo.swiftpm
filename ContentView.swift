@@ -68,8 +68,7 @@ struct ContentView: View {
                                     Image(systemName: "barcode")
                                         .foregroundColor(.blue)
                                     Text(item.barcode)
-                                        .font(.headline)
-                                        .fontDesign(.monospaced)
+                                        .font(.system(.headline, design: .monospaced))
                                 }
 
                                 // Expiration date if found
